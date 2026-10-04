@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Garba Night 2026 - Staff Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+
+    h1 {
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    input {
+      width: 90%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    button {
+      padding: 12px 20px;
+      margin: 8px;
+      border: none;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #reader {
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 10px;
+      font-size: 17px;
+      font-weight: bold;
+    }
+
+    .success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .info {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>🎟️ Garba Night 2026</h1>
+  <div class="subtitle">Staff Entry Verification</div>
+
+  <input
+    type="password"
+    id="pin"
+    placeholder="Enter Staff PIN"
+  >
+
+  <br>
+
+  <button onclick="startScanner()">📷 Start Scanner</button>
+
+  <div id="reader"></div>
+
+  <div id="result" class="hidden"></div>
+
+  <button id="nextBtn" class="hidden" onclick="scanNext()">
+    🔄 Scan Next
+  </button>
+
+</div>
+
+<script>
+
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbzG_6RjBkjjH8Rv8xbwXNjFZDXIvLE5inmnTWy4rA7RiV7XwNbNYoCzuE6BklR9GC7Z/exec";
+
+let scanner = null;
+let scanning = false;
+
+function showResult(message, type) {
+
+  const result = document.getElementById("result");
+
+  result.className = "";
+  result.classList.add(type);
+
+  result.innerHTML = message;
+}
+
+function extractPassID(text) {
+
+  text = text.trim();
+
+  // If QR contains a verification URL
+  try {
+
+    const url = new URL(text);
+
+    const pass = url.searchParams.get("pass");
+
+    if (pass) {
+      return pass;
+    }
+
+  } catch (e) {
+    // Not a URL
+  }
+
+  // If QR directly contains Pass ID
+  return text;
+}
+
+
+function startScanner() {
+
+  const pin = document.getElementById("pin").value.trim();
+
+  if (!pin) {
+
+    showResult(
+      "⚠️ Please enter the Staff PIN first.",
+      "error"
+    );
+
+    return;
+  }
+
+  if (scanning) return;
+
+  scanning = true;
+
+  document.getElementById("result").classList.add("hidden");
+  document.getElementById("nextBtn").classList.add("hidden");
+
+  scanner = new Html5Qrcode("reader");
+
+  scanner.start(
+    { facingMode: "environment" },
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+
+    onScanSuccess,
+
+    () => {}
+
+  ).catch(error => {
+
+    scanning = false;
+
+    showResult(
+      "❌ Camera could not start.<br><br>" +
+      "Please allow camera permission and try again.",
+      "error"
+    );
+
+  });
+}
+
+
+async function onScanSuccess(decodedText) {
+
+  if (!scanning) return;
+
+  scanning = false;
+
+  try {
+    await scanner.stop();
+  } catch (e) {}
+
+  const passID = extractPassID(decodedText);
+
+  const pin = document.getElementById("pin").value.trim();
+
+  showResult(
+    "⏳ Checking pass " + passID + "...",
+    "info"
+  );
+
+  verifyPass(passID, pin);
+}
+
+
+function verifyPass(passID, pin) {
+
+  const callbackName =
+    "garbaCallback_" + Date.now();
+
+  window[callbackName] = function(data) {
+
+    try {
+
+      delete window[callbackName];
+
+      if (data.success) {
+
+        showResult(
+          "✅ ENTRY APPROVED<br><br>" +
+          "Pass ID: " + data.passID + "<br>" +
+          "Name: " + data.name + "<br>" +
+          "Valid: " + data.validDates,
+          "success"
+        );
+
+      } else {
+
+        let message = data.message || "Pass verification failed.";
+
+        if (data.name) {
+          message += "<br><br>Name: " + data.name;
+        }
+
+        if (data.validDates) {
+          message += "<br>Valid: " + data.validDates;
+        }
+
+        showResult(
+          message,
+          "error"
+        );
+      }
+
+      document.getElementById("nextBtn")
+        .classList.remove("hidden");
+
+    } catch (error) {
+
+      showResult(
+        "❌ Verification error.",
+        "error"
+      );
+
+    }
+
+  };
+
+  const script = document.createElement("script");
+
+  script.src =
+    API_URL +
+    "?action=verify" +
+    "&pass=" + encodeURIComponent(passID) +
+    "&pin=" + encodeURIComponent(pin) +
+    "&callback=" + callbackName;
+
+  script.onerror = function() {
+
+    delete window[callbackName];
+
+    showResult(
+      "❌ Could not connect to verification server.",
+      "error"
+    );
+
+    document.getElementById("nextBtn")
+      .classList.remove("hidden");
+  };
+
+  document.body.appendChild(script);
+
+}
+
+
+function scanNext() {
+
+  document.getElementById("result").classList.add("hidden");
+
+  document.getElementById("nextBtn")
+    .classList.add("hidden");
+
+  startScanner();
+}
+
+</script>
+
+</body>
+</html>
