@@ -34,8 +34,13 @@ button.secondary{background:#666}
 <h1>🎟️ Garba Night 2026</h1>
 <div class="subtitle">Staff Entry Verification</div>
 
-<input type="password" id="pin" placeholder="Enter Staff PIN">
+<div id="loginPanel">
+<input type="password" id="pin" placeholder="Enter Staff PIN" autocomplete="off">
+<button onclick="authenticateStaff()">🔐 Unlock Staff Scanner</button>
+<div id="loginMessage" class="hidden"></div>
+</div>
 
+<div id="staffPanel" class="hidden">
 <button onclick="startScanner()">📷 Start Scanner</button>
 <button class="secondary" onclick="loadStats()">📊 Refresh Counter</button>
 
@@ -48,7 +53,7 @@ button.secondary{background:#666}
 <div class="dashboard-title">📊 Entry Counter</div>
 <div class="overall">
 <div class="overall-number" id="overallTotal">0</div>
-<div class="overall-label">TOTAL ENTRIES — ALL 3 DAYS</div>
+<div class="overall-label">OVERALL TOTAL — DAY 1 + DAY 2 + DAY 3</div>
 
 <div class="counter-grid" style="margin-top:12px">
 <div class="counter"><strong id="overallFirst">0</strong><span>1st Year — 3 Days</span></div>
@@ -61,10 +66,52 @@ button.secondary{background:#666}
 <div class="updated" id="updated">Enter PIN and tap Refresh Counter</div>
 </div>
 </div>
+</div>
 
 <script>
 const API_URL="https://script.google.com/macros/s/AKfycbzG_6RjBkjjH8Rv8xbwXNjFZDXIvLE5inmnTWy4rA7RiV7XwNbNYoCzuE6BklR9GC7Z/exec";
 let scanner=null,scanning=false;
+let staffAuthenticated=false;
+
+function showLoginMessage(message,type){
+ const r=document.getElementById("loginMessage");
+ r.className="";r.classList.add(type);r.innerHTML=message;
+}
+
+function authenticateStaff(){
+ const pin=document.getElementById("pin").value.trim();
+ if(!pin){
+  showLoginMessage("⚠️ Please enter the Staff PIN.","error");
+  return;
+ }
+
+ showLoginMessage("⏳ Verifying Staff PIN...","info");
+ const cb="garbaAuthCallback_"+Date.now();
+ window[cb]=function(data){
+  try{
+   delete window[cb];
+   if(data.success){
+    staffAuthenticated=true;
+    document.getElementById("loginPanel").classList.add("hidden");
+    document.getElementById("staffPanel").classList.remove("hidden");
+    showResult("🔓 ACCESS GRANTED<br><br>Staff scanner unlocked.","success");
+    loadStats();
+   }else{
+    staffAuthenticated=false;
+    showLoginMessage("🚫 ACCESS DENIED<br><br>Wrong Staff PIN. Scanner will not start.","error");
+    document.getElementById("pin").value="";
+    document.getElementById("pin").focus();
+   }
+  }catch(e){
+   staffAuthenticated=false;
+   showLoginMessage("❌ Could not verify Staff PIN.","error");
+  }
+ };
+ const s=document.createElement("script");
+ s.src=API_URL+"?action=auth&pin="+encodeURIComponent(pin)+"&callback="+cb;
+ s.onerror=function(){delete window[cb];staffAuthenticated=false;showLoginMessage("❌ Could not connect to access server.","error")};
+ document.body.appendChild(s);
+}
 
 function showResult(message,type){
  const r=document.getElementById("result");
@@ -76,8 +123,12 @@ function extractPassID(text){
  return text;
 }
 function startScanner(){
+ if(!staffAuthenticated){
+  showLoginMessage("🚫 ACCESS DENIED<br><br>Enter the correct Staff PIN to unlock the scanner.","error");
+  return;
+ }
  const pin=document.getElementById("pin").value.trim();
- if(!pin){showResult("⚠️ Please enter the Staff PIN first.","error");return}
+ if(!pin){staffAuthenticated=false;document.getElementById("staffPanel").classList.add("hidden");document.getElementById("loginPanel").classList.remove("hidden");showLoginMessage("🚫 ACCESS DENIED","error");return}
  if(scanning)return;
  scanning=true;
  document.getElementById("result").classList.add("hidden");
@@ -87,6 +138,7 @@ function startScanner(){
  .catch(()=>{scanning=false;showResult("❌ Camera could not start.<br><br>Please allow camera permission and try again.","error")});
 }
 async function onScanSuccess(decodedText){
+ if(!staffAuthenticated){return;}
  if(!scanning)return;
  scanning=false;
  try{await scanner.stop()}catch(e){}
@@ -96,6 +148,7 @@ async function onScanSuccess(decodedText){
  verifyPass(passID,pin);
 }
 function verifyPass(passID,pin){
+ if(!staffAuthenticated){showResult("🚫 ACCESS DENIED","error");return;}
  const cb="garbaCallback_"+Date.now();
  window[cb]=function(data){
   try{
@@ -123,8 +176,9 @@ function scanNext(){
  startScanner();
 }
 function loadStats(){
+ if(!staffAuthenticated){document.getElementById("updated").textContent="Access denied. Unlock scanner with the correct Staff PIN.";return;}
  const pin=document.getElementById("pin").value.trim();
- if(!pin){document.getElementById("updated").textContent="Enter Staff PIN to view counters.";return}
+ if(!pin){document.getElementById("updated").textContent="Staff authentication required.";return}
  const cb="garbaStatsCallback_"+Date.now();
  window[cb]=function(data){
   try{delete window[cb];if(!data.success){document.getElementById("updated").textContent=data.message||"Could not load statistics.";return}renderStats(data)}
@@ -143,16 +197,17 @@ function renderStats(data){
  document.getElementById("overallFourth").textContent=data.overall["Fourth Year"];
 
  const c=document.getElementById("statsContainer");c.innerHTML="";
- data.eventDates.forEach(function(date){
+ data.eventDates.forEach(function(date,index){
   const s=data.stats[date],card=document.createElement("div");card.className="day-card";
   card.innerHTML=
-   '<div class="day-header">'+date+'</div>'+
+   '<div class="day-header">DAY '+(index+1)+' — '+date+'</div>'+
+   '<div class="day-total" style="font-size:22px;background:#f7f1df">DAY '+(index+1)+' TOTAL: '+s.Total+'</div>'+
    '<div class="counter-grid">'+
    '<div class="counter"><strong>'+s["First Year"]+'</strong><span>1st Year</span></div>'+
    '<div class="counter"><strong>'+s["Second Year"]+'</strong><span>2nd Year</span></div>'+
    '<div class="counter"><strong>'+s["Third Year"]+'</strong><span>3rd Year</span></div>'+
    '<div class="counter"><strong>'+s["Fourth Year"]+'</strong><span>4th Year</span></div>'+
-   '</div><div class="day-total">DAY TOTAL: '+s.Total+'</div>';
+   '</div>';
   c.appendChild(card);
  });
  document.getElementById("updated").textContent="Last updated: "+data.generatedAt;
