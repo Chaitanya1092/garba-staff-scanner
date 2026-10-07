@@ -26,7 +26,7 @@ button.secondary{background:#666}
 .counter{background:#f7f7f7;border-radius:10px;padding:10px;text-align:center}
 .counter strong{display:block;font-size:24px;color:#7f1232}.counter span{font-size:12px;color:#555}
 .day-total{padding:11px;border-top:1px solid #ddd;text-align:center;font-weight:bold}
-.updated{text-align:center;font-size:11px;color:#777;margin-top:10px}
+.updated{text-align:center;font-size:11px;color:#777;margin-top:10px}.entry-list{margin-top:20px}.entry-list-title{text-align:center;font-size:20px;font-weight:bold;margin-bottom:10px}.list-controls{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px}.list-controls select{padding:12px;border:1px solid #ccc;border-radius:9px;font-size:15px}.list-wrap{overflow-x:auto;border:1px solid #ddd;border-radius:10px}.entry-table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}.entry-table th{background:#7f1232;color:#fff;padding:9px 7px;text-align:left}.entry-table td{padding:8px 7px;border-bottom:1px solid #eee}.entry-table tr:last-child td{border-bottom:0}.list-empty{text-align:center;padding:18px;color:#666;background:#fafafa}
 </style>
 </head>
 <body>
@@ -43,6 +43,7 @@ button.secondary{background:#666}
 <div id="staffPanel" class="hidden">
 <button onclick="startScanner()">📷 Start Scanner</button>
 <button class="secondary" onclick="loadStats()">📊 Refresh Counter</button>
+<button class="secondary" onclick="loadEntryList()">👥 Refresh Entry List</button>
 
 <div id="reader"></div>
 <div id="result" class="hidden"></div>
@@ -64,6 +65,26 @@ button.secondary{background:#666}
 </div>
 <div id="statsContainer"></div>
 <div class="updated" id="updated">Enter PIN and tap Refresh Counter</div>
+
+<div class="entry-list">
+<div class="entry-list-title">👥 Entered Participants</div>
+<div class="list-controls">
+<select id="entryDateFilter" onchange="loadEntryList()">
+<option value="">All 3 Days</option>
+<option value="15 October 2026">15 October 2026</option>
+<option value="16 October 2026">16 October 2026</option>
+<option value="17 October 2026">17 October 2026</option>
+</select>
+<button class="secondary" onclick="loadEntryList()">🔄 Refresh</button>
+</div>
+<div class="list-wrap">
+<table class="entry-table">
+<thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Roll No.</th><th>Year</th></tr></thead>
+<tbody id="entryListBody"><tr><td colspan="5" class="list-empty">Unlock staff access to view entries.</td></tr></tbody>
+</table>
+</div>
+<div class="updated" id="listUpdated"></div>
+</div>
 </div>
 </div>
 </div>
@@ -96,6 +117,7 @@ function authenticateStaff(){
     document.getElementById("staffPanel").classList.remove("hidden");
     showResult("🔓 ACCESS GRANTED<br><br>Staff scanner unlocked.","success");
     loadStats();
+    loadEntryList();
    }else{
     staffAuthenticated=false;
     showLoginMessage("🚫 ACCESS DENIED<br><br>Wrong Staff PIN. Scanner will not start.","error");
@@ -189,6 +211,54 @@ function loadStats(){
  s.onerror=function(){delete window[cb];document.getElementById("updated").textContent="❌ Could not connect to statistics server."};
  document.body.appendChild(s);
 }
+
+function loadEntryList(){
+ if(!staffAuthenticated){
+  document.getElementById("listUpdated").textContent="🚫 ACCESS DENIED";
+  return;
+ }
+ const pin=document.getElementById("pin").value.trim();
+ const date=document.getElementById("entryDateFilter").value;
+ const body=document.getElementById("entryListBody");
+ body.innerHTML='<tr><td colspan="5" class="list-empty">⏳ Loading entry list...</td></tr>';
+ const cb="garbaListCallback_"+Date.now();
+ window[cb]=function(data){
+  try{
+   delete window[cb];
+   if(!data.success){
+    body.innerHTML='<tr><td colspan="5" class="list-empty">'+(data.message||"Could not load entry list.")+'</td></tr>';
+    return;
+   }
+   renderEntryList(data);
+  }catch(e){
+   body.innerHTML='<tr><td colspan="5" class="list-empty">❌ Error loading entry list.</td></tr>';
+  }
+ };
+ const s=document.createElement("script");
+ s.src=API_URL+"?action=list&pin="+encodeURIComponent(pin)+"&date="+encodeURIComponent(date)+"&callback="+cb;
+ s.onerror=function(){delete window[cb];body.innerHTML='<tr><td colspan="5" class="list-empty">❌ Could not connect to entry list server.</td></tr>'};
+ document.body.appendChild(s);
+}
+
+function renderEntryList(data){
+ const body=document.getElementById("entryListBody");
+ body.innerHTML="";
+ if(!data.entries || data.entries.length===0){
+  body.innerHTML='<tr><td colspan="5" class="list-empty">No entries found for the selected date.</td></tr>';
+ }else{
+  data.entries.forEach(function(e){
+   const tr=document.createElement("tr");
+   [e.date,e.time,e.name,e.rollNo,e.year].forEach(function(v){
+    const td=document.createElement("td");
+    td.textContent=v||"—";
+    tr.appendChild(td);
+   });
+   body.appendChild(tr);
+  });
+ }
+ document.getElementById("listUpdated").textContent="Showing "+data.total+" approved entr"+(data.total===1?"y":"ies")+" • Last updated: "+data.generatedAt;
+}
+
 function renderStats(data){
  document.getElementById("overallTotal").textContent=data.overall.Total;
  document.getElementById("overallFirst").textContent=data.overall["First Year"];
